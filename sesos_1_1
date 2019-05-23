@@ -1,0 +1,74 @@
+var WIFI_NAME = "lqrn";
+var WIFI_OPTIONS = {
+  password: "espruino"
+};
+var classroom = 'E4';
+//var host = '192.168.173.1';
+//var port = 3000;
+var wifi = require("Wifi");
+var http = require('http');
+var device_mode = true; //Logowanie
+digitalWrite(NodeMCU.D7, device_mode);
+var spi = new SPI();
+spi.setup({
+  mosi: NodeMCU.D5,
+  miso: NodeMCU.D4,
+  sck: NodeMCU.D3
+});
+var nfc = require("MFRC522").connect(spi, NodeMCU.D2 /*CS*/ );
+
+wifi.connect(WIFI_NAME, WIFI_OPTIONS, function(err) {
+  if (err) {
+    console.log("Connection error: " + err);
+    return;
+  }
+  console.log("Connected!");
+});
+
+function sendRequest(idlegitymacji) {
+  payload = {
+    classroom: classroom,
+    els_id: idlegitymacji,
+  };
+  payload = JSON.stringify(payload);
+  registerOptions = {
+    host: '192.168.173.1',
+    port: 3000,
+    path: (device_mode === true) ? '/attendance' : '/register',
+    method: 'POST',
+    protocol: 'http',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': payload.length,
+      'Accept': 'application/json'
+    }
+  };
+  var req = http.request(registerOptions, function(res) {
+    console.log('Status: ' + res.statusCode);
+    console.log('Headers: ' + JSON.stringify(res.headers));
+    res.on('data', function(data) {
+      console.log("HTTP> " + data);
+    });
+    res.on('close', function(data) {
+      console.log("Connection closed");
+    });
+    res.on('error', function(error) {
+      console.log(error);
+    });
+  });
+  req.write(payload);
+  req.end();
+}
+setWatch(function() {
+  device_mode =! device_mode;
+  digitalWrite(NodeMCU.D7, device_mode);
+}, NodeMCU.D8, {repeat: true, edge: 'rising', debounce: 10});
+
+setInterval(function() { 
+  nfc.findCards(function(card) {
+    print("Found card " + card);
+    card = JSON.stringify(card);
+    sendRequest(card, device_mode);
+    console.log(device_mode);
+  });
+}, 1000);
